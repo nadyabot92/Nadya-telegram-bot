@@ -1,4 +1,4 @@
-// Load .env only in local development
+// Load .env locally only
 if (process.env.NODE_ENV !== "production") {
   require("dotenv").config();
 }
@@ -6,57 +6,76 @@ if (process.env.NODE_ENV !== "production") {
 const TelegramBot = require("node-telegram-bot-api");
 const axios = require("axios");
 
-// 🔐 Validate required environment variables
-if (!process.env.TELEGRAM_TOKEN) {
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+
+if (!TELEGRAM_TOKEN) {
   console.error("❌ TELEGRAM_TOKEN is missing!");
   process.exit(1);
 }
 
-if (!process.env.GROQ_API_KEY) {
+if (!GROQ_API_KEY) {
   console.error("❌ GROQ_API_KEY is missing!");
   process.exit(1);
 }
 
-const bot = new TelegramBot(process.env.TELEGRAM_TOKEN, {
-  polling: true,
-});
+const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 
-console.log("✅ Bot is running...");
+console.log("🤖 Bot is running...");
 
-// Telegram max message size
+// Telegram max safe message length
 const MAX_LENGTH = 4000;
 
-// 📩 Handle incoming messages
-bot.on("message", async (msg) => {
-  const chatId = msg.chat.id;
+// Function to send long messages safely
+async function sendLongMessage(chatId, text) {
+  for (let i = 0; i < text.length; i += MAX_LENGTH) {
+    const chunk = text.substring(i, i + MAX_LENGTH);
+    await bot.sendMessage(chatId, chunk);
+  }
+}
 
-  if (!msg.text || msg.text.startsWith("/")) return;
+// Function to generate AI response with auto-continue
+async function generateLongResponse(userText) {
+  let fullReply = "";
+  let continueGenerating = true;
+  let attempts = 0;
 
-  try {
+  while (continueGenerating && attempts < 3) {
+    attempts++;
+
     const response = await axios.post(
       "https://api.groq.com/openai/v1/chat/completions",
       {
-        model: "llama-3.1-70b-versatile", // 🔥 Better & more detailed model
+        model: "llama-3.1-70b-versatile",
         messages: [
           {
             role: "system",
-            content:
-              "You are a highly detailed academic assistant. Always give long, comprehensive, structured answers. Write with depth, clarity, and full explanations. Use sections, bold titles, and examples where appropriate.",
+            content: `
+You are a professional academic writer and historian.
+
+Always provide extremely detailed, long-form, structured answers.
+Never summarize.
+Never shorten.
+Write comprehensive explanations with clear headings.
+If the topic is large, continue chronologically without stopping.
+`
           },
           {
             role: "user",
-            content: msg.text,
-          },
+            content:
+              attempts === 1
+                ? userText + " Give a very long, detailed academic explanation."
+                : "Continue from where you stopped. Do not repeat previous text."
+          }
         ],
-        max_tokens: 1200,
-        temperature: 0.8,
-        top_p: 0.95,
+        max_tokens: 2000,
+        temperature: 0.9
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-          "Content-Type": "application/json",
-        },
+          Authorization: `Bearer ${GROQ_API_KEY}`,
+          "Content-Type": "application/json"
+        }
       }
     );
 
@@ -64,17 +83,31 @@ bot.on("message", async (msg) => {
 
     console.log("📏 Reply length:", reply.length);
 
-    // ✂️ Split long messages safely
-    if (reply.length <= MAX_LENGTH) {
-      await bot.sendMessage(chatId, reply);
-    } else {
-      for (let i = 0; i < reply.length; i += MAX_LENGTH) {
-        const chunk = reply.substring(i, i + MAX_LENGTH);
-        await bot.sendMessage(chatId, chunk);
-      }
+    fullReply += "\n" + reply;
+
+    // If reply seems long enough, stop
+    if (reply.length < 1500) {
+      continueGenerating = false;
     }
+  }
+
+  return fullReply.trim();
+}
+
+bot.on("message", async (msg) => {
+  const chatId = msg.chat.id;
+
+  if (!msg.text || msg.text.startsWith("/")) return;
+
+  try {
+    await bot.sendMessage(chatId, "⏳ Generating detailed response...");
+
+    const reply = await generateLongResponse(msg.text);
+
+    await sendLongMessage(chatId, reply);
+
   } catch (error) {
-    console.error("❌ AI Error:", error.response?.data || error.message);
-    await bot.sendMessage(chatId, "⚠️ Error talking to AI.");
+    console.error("❌ ERROR:", error.response?.data || error.message);
+    bot.sendMessage(chatId, "Error talking to AI.");
   }
 });
