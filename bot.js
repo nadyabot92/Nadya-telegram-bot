@@ -23,7 +23,7 @@ bot.on("message", async (msg) => {
           { role: "system", content: "You are a helpful AI assistant." },
           { role: "user", content: msg.text },
         ],
-        max_tokens: 300,
+        max_tokens: 1000,
       },
       {
         headers: {
