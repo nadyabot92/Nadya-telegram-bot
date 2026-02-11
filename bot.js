@@ -1,4 +1,7 @@
-require("dotenv").config();
+if (process.env.NODE_ENV !== "production") {
+  require("dotenv").config();
+}
+console.log("TOKEN VALUE:", process.env.TELEGRAM_TOKEN);
 const TelegramBot = require("node-telegram-bot-api");
 const axios = require("axios");
 
