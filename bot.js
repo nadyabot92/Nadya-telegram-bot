@@ -34,7 +34,17 @@ bot.on("message", async (msg) => {
     );
 
     const reply = response.data.choices[0].message.content;
-    bot.sendMessage(chatId, reply);
+const MAX_LENGTH = 4000;
+
+if (reply.length <= MAX_LENGTH) {
+  bot.sendMessage(chatId, reply);
+} else {
+  for (let i = 0; i < reply.length; i += MAX_LENGTH) {
+    const chunk = reply.substring(i, i + MAX_LENGTH);
+    await bot.sendMessage(chatId, chunk);
+  }
+}
+
 
   } catch (error) {
     console.error(error.response?.data || error.message);
