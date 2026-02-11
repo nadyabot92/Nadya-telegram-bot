@@ -1,10 +1,30 @@
-// Load .env locally only
+// Load .env locally (NOT used on Render)
 if (process.env.NODE_ENV !== "production") {
   require("dotenv").config();
 }
 
+const express = require("express");
 const TelegramBot = require("node-telegram-bot-api");
 const axios = require("axios");
+
+/* ===========================
+   RENDER PORT FIX (FREE PLAN)
+=========================== */
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get("/", (req, res) => {
+  res.send("Bot is running.");
+});
+
+app.listen(PORT, () => {
+  console.log(`🌐 Server running on port ${PORT}`);
+});
+
+/* ===========================
+   ENV VARIABLES
+=========================== */
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
@@ -19,14 +39,20 @@ if (!GROQ_API_KEY) {
   process.exit(1);
 }
 
+/* ===========================
+   TELEGRAM BOT INIT
+=========================== */
+
 const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 
 console.log("🤖 Bot is running...");
 
-// Telegram max safe message length
+/* ===========================
+   TELEGRAM SAFE MESSAGE SPLIT
+=========================== */
+
 const MAX_LENGTH = 4000;
 
-// Function to send long messages safely
 async function sendLongMessage(chatId, text) {
   for (let i = 0; i < text.length; i += MAX_LENGTH) {
     const chunk = text.substring(i, i + MAX_LENGTH);
@@ -34,11 +60,14 @@ async function sendLongMessage(chatId, text) {
   }
 }
 
-// Function to generate AI response with auto-continue
+/* ===========================
+   AI GENERATION (AUTO-CONTINUE)
+=========================== */
+
 async function generateLongResponse(userText) {
   let fullReply = "";
-  let continueGenerating = true;
   let attempts = 0;
+  let continueGenerating = true;
 
   while (continueGenerating && attempts < 3) {
     attempts++;
@@ -53,10 +82,10 @@ async function generateLongResponse(userText) {
             content: `
 You are a professional academic writer and historian.
 
-Always provide extremely detailed, long-form, structured answers.
+Always provide extremely detailed, structured, long-form responses.
 Never summarize.
 Never shorten.
-Write comprehensive explanations with clear headings.
+Write comprehensive explanations with headings.
 If the topic is large, continue chronologically without stopping.
 `
           },
@@ -85,7 +114,7 @@ If the topic is large, continue chronologically without stopping.
 
     fullReply += "\n" + reply;
 
-    // If reply seems long enough, stop
+    // If reply becomes shorter, assume model finished
     if (reply.length < 1500) {
       continueGenerating = false;
     }
@@ -93,6 +122,10 @@ If the topic is large, continue chronologically without stopping.
 
   return fullReply.trim();
 }
+
+/* ===========================
+   MESSAGE HANDLER
+=========================== */
 
 bot.on("message", async (msg) => {
   const chatId = msg.chat.id;
